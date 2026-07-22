@@ -1,0 +1,134 @@
+﻿
+> frontend@0.1.0 lint
+> eslint
+
+
+D:\Christ\Proj\Clinic\draft\frontend\app\layout.tsx
+  8:7  warning  'inter' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+D:\Christ\Proj\Clinic\draft\frontend\app\login\page.tsx
+  8:28  warning  'Clock' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\Christ\Proj\Clinic\draft\frontend\app\page.tsx
+   11:38   warning  'getAvatarColor' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-unused-vars
+   61:5    error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\app\page.tsx:61:5
+  59 |     
+  60 |     // Initial fetch
+> 61 |     fetchStats();
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  62 |     
+  63 |     // Polling
+  64 |     const intervalId = setInterval(fetchStats, 5000);  react-hooks/set-state-in-effect
+  315:107  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+
+D:\Christ\Proj\Clinic\draft\frontend\app\patients\new\page.tsx
+  51:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Christ\Proj\Clinic\draft\frontend\app\workspace\page.tsx
+  12:33  warning  'getPriorityColor' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\Christ\Proj\Clinic\draft\frontend\components\Navbar.tsx
+  27:21  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\components\Navbar.tsx:27:21
+  25 |   const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  26 |
+> 27 |   useEffect(() => { setUser(getStoredUser() as typeof user); }, []);
+     |                     ^^^^^^^ Avoid calling setState() directly within an effect
+  28 |
+  29 |   const handleLogout = () => { logout(); router.push('/login'); };
+  30 |  react-hooks/set-state-in-effect
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\ConsultationPanel.tsx
+  58:10  warning  'consultationId' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  66:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\ConsultationPanel.tsx:66:5
+  64 |
+  65 |   useEffect(() => {
+> 66 |     setResult(null);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  67 |     setConsultationId(null);
+  68 |     setSoapDraft({});
+  69 |     setPipelineSteps([]);  react-hooks/set-state-in-effect
+  87:7   warning  Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-expressions
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\CopilotPanel.tsx
+  50:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\CopilotPanel.tsx:50:7
+  48 |       const priority = triageResult.priority;
+  49 |       const confidence = Math.round((triageResult.confidence ?? 0) * 100);
+> 50 |       setMessages([{
+     |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  51 |         role: 'assistant',
+  52 |         content: `Analysis complete. **${priority === 'P1' ? '≡ƒÜ¿ P1 Emergency' : priority === 'P2' ? 'ΓÜá∩╕Å P2 Urgent' : '≡ƒƒó P3 Non-Urgent'}** ≡ƒÄ» ${confidence}% confidence.\n\nI've reviewed the consultation transcript, extracted symptoms, and generated SOAP notes. How can I assist with this case?`,
+  53 |       }]);  react-hooks/set-state-in-effect
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\PatientMemoryPanel.tsx
+   7:21  warning  'formatDate' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+   9:39  warning  'Calendar' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  10:3   warning  'ChevronRight' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+  10:33  warning  'Clock' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+  14:10  warning  'Button' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               @typescript-eslint/no-unused-vars
+  50:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\PatientMemoryPanel.tsx:50:5
+  48 |   useEffect(() => {
+  49 |     const q = search.toLowerCase();
+> 50 |     setFiltered(patients.filter(p =>
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  51 |       p.name.toLowerCase().includes(q) ||
+  52 |       p.mrn?.toLowerCase().includes(q) ||
+  53 |       p.chronic_conditions.some(c => c.toLowerCase().includes(q))  react-hooks/set-state-in-effect
+  58:31  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Christ\Proj\Clinic\draft\frontend\components\workspace\PatientMemoryPanel.tsx:58:31
+  56 |
+  57 |   useEffect(() => {
+> 58 |     if (!selectedPatientId) { setMemory(null); return; }
+     |                               ^^^^^^^^^ Avoid calling setState() directly within an effect
+  59 |     setMemoryLoading(true);
+  60 |     api.post('/copilot/chat', {
+  61 |       patient_id: selectedPatientId,                                              react-hooks/set-state-in-effect
+
+Γ£û 19 problems (8 errors, 11 warnings)
+
