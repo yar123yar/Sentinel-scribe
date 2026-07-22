@@ -53,7 +53,7 @@ export default function PatientDetailsPage() {
   const markAsComplete = async (consultId: string) => {
     try {
       await api.patch(`/consultations/${consultId}/complete`);
-      setConsultations(prev => prev.map(c => c.id === consultId ? { ...c, status: 'completed' } : c));
+      setConsultations(prev => prev.map(c => c.id === consultId ? { ...c, status: 'complete' } : c));
     } catch (e) {
       console.error(e);
       alert('Failed to mark complete');
