@@ -53,7 +53,7 @@ export default function PatientDetailsPage() {
   const markAsComplete = async (consultId: string) => {
     try {
       await api.patch(`/consultations/${consultId}/complete`);
-      setConsultations(prev => prev.map(c => c.id === consultId ? { ...c, status: 'completed' } : c));
+      setConsultations(prev => prev.map(c => c.id === consultId ? { ...c, status: 'complete' } : c));
     } catch (e) {
       console.error(e);
       alert('Failed to mark complete');
@@ -209,7 +209,7 @@ export default function PatientDetailsPage() {
                             Triage: {consult.triage_result.priority}
                           </Badge>
                         )}
-                        {consult.status === 'completed' ? (
+                        {consult.status === 'complete' ? (
                           <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800 shadow-sm px-2">
                             <CheckCircle className="w-3 h-3 mr-1" /> Completed
                           </Badge>
