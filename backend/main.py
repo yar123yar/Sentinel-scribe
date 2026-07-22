@@ -16,14 +16,14 @@ from routers import auth, patients, consultations, triage, soap, copilot, dashbo
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 Starting Clinical AI System...")
+    print("[START] Starting Clinical AI System...")
     await create_tables()
-    print("✅ Database tables created")
+    print("[OK] Database tables created")
     await qdrant.init_collections()
-    print("✅ Qdrant collections ready")
+    print("[OK] Qdrant collections ready")
     yield
     # Shutdown
-    print("🛑 Shutting down...")
+    print("[STOP] Shutting down...")
 
 
 app = FastAPI(
@@ -33,10 +33,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server and production
+# CORS — allow frontend dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

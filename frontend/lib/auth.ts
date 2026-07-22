@@ -14,6 +14,14 @@ export async function login(email: string, password: string): Promise<AuthState>
   return { token: access_token, user };
 }
 
+export async function signup(name: string, role: string, email: string, phone_number: string, password: string): Promise<AuthState> {
+  const res = await api.post('/auth/signup', { name, role, email, phone_number, password });
+  const { access_token, user } = res.data;
+  localStorage.setItem('auth_token', access_token);
+  localStorage.setItem('auth_user', JSON.stringify(user));
+  return { token: access_token, user };
+}
+
 export async function loginDemo(): Promise<AuthState> {
   const res = await api.post('/auth/login-demo');
   const { access_token, user } = res.data;

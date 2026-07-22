@@ -6,14 +6,18 @@ Manages two collections:
 """
 
 import uuid
-import json
+import asyncio
+from functools import partial
 from typing import Optional, List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
     Distance, VectorParams, PointStruct,
-    Filter, FieldCondition, MatchValue, SearchParams,
+    Filter, FieldCondition, MatchValue,
 )
 from config import settings
+from rag.embed import embed_text as rag_embed_text
+from rag.qdrant import init_collection as rag_init_collection, upsert_document as rag_upsert_document
+from rag.retrieve import search_collection_sync as rag_search_collection_sync
 
 VECTOR_SIZE = 768   # text-embedding-004 / fallback hash-based mock
 
@@ -55,17 +59,22 @@ def _embed_text(text: str) -> List[float]:
         import hashlib
         h = hashlib.sha256(text.encode()).digest()
         base = [((b / 255.0) * 2 - 1) for b in h]
-        # Repeat to fill VECTOR_SIZE
         repeated = (base * (VECTOR_SIZE // len(base) + 1))[:VECTOR_SIZE]
         return repeated
 
 
+async def _run_in_executor(fn, *args):
+    """Run a synchronous blocking function in a thread pool to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, partial(fn, *args))
+
+
 # ─── Collection Setup ────────────────────────────────────────────────────────
 
-async def init_collections():
+def _init_collections_sync():
     client = _get_client()
     if not client:
-        print("⚠️  Qdrant unavailable — skipping collection init")
+        print("[WARN] Qdrant unavailable - skipping collection init")
         return
 
     existing = {c.name for c in client.get_collections().collections}
@@ -76,19 +85,21 @@ async def init_collections():
                 collection_name=name,
                 vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
             )
-            print(f"✅ Created Qdrant collection: {name}")
+            print(f"[OK] Created Qdrant collection: {name}")
+            
+    # Also initialize via new RAG module just in case
+    rag_init_collection(GUIDELINES_COLLECTION)
 
     client.close()
 
 
+async def init_collections():
+    await _run_in_executor(_init_collections_sync)
+
+
 # ─── Patient Memory ──────────────────────────────────────────────────────────
 
-async def upsert_patient_memory(
-    patient_id: str,
-    consultation_id: str,
-    text: str,                  # summary text to embed
-    metadata: Dict[str, Any],
-):
+def _upsert_patient_memory_sync(patient_id, consultation_id, text, metadata):
     client = _get_client()
     if not client:
         return
@@ -108,11 +119,16 @@ async def upsert_patient_memory(
     client.close()
 
 
-async def search_patient_memory(
+async def upsert_patient_memory(
     patient_id: str,
-    query: str,
-    top_k: int = 5,
-) -> List[Dict[str, Any]]:
+    consultation_id: str,
+    text: str,
+    metadata: Dict[str, Any],
+):
+    await _run_in_executor(_upsert_patient_memory_sync, patient_id, consultation_id, text, metadata)
+
+
+def _search_patient_memory_sync(patient_id, query, top_k):
     client = _get_client()
     if not client:
         return _mock_patient_memory(patient_id)
@@ -131,37 +147,34 @@ async def search_patient_memory(
     return [r.payload for r in results]
 
 
+async def search_patient_memory(
+    patient_id: str,
+    query: str,
+    top_k: int = 5,
+) -> List[Dict[str, Any]]:
+    return await _run_in_executor(_search_patient_memory_sync, patient_id, query, top_k)
+
+
 # ─── Clinical Guidelines RAG ─────────────────────────────────────────────────
 
-async def search_guidelines(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    client = _get_client()
-    if not client:
+def _search_guidelines_sync(query, top_k):
+    results = rag_search_collection_sync(GUIDELINES_COLLECTION, query, top_k=top_k)
+    if not results:
         return _mock_guidelines(query)
+    return results
 
-    vector = _embed_text(query)
-    results = client.search(
-        collection_name=GUIDELINES_COLLECTION,
-        query_vector=vector,
-        limit=top_k,
-        with_payload=True,
-    )
-    client.close()
-    return [r.payload for r in results]
+
+async def search_guidelines(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    return await _run_in_executor(_search_guidelines_sync, query, top_k)
+
+
+def _upsert_guideline_sync(guideline_id, title, text, category):
+    metadata = {"title": title, "category": category}
+    rag_upsert_document(GUIDELINES_COLLECTION, guideline_id, text, metadata)
 
 
 async def upsert_guideline(guideline_id: str, title: str, text: str, category: str):
-    client = _get_client()
-    if not client:
-        return
-
-    vector = _embed_text(text)
-    point = PointStruct(
-        id=str(uuid.uuid5(uuid.NAMESPACE_URL, guideline_id)),
-        vector=vector,
-        payload={"id": guideline_id, "title": title, "text": text, "category": category},
-    )
-    client.upsert(collection_name=GUIDELINES_COLLECTION, points=[point])
-    client.close()
+    await _run_in_executor(_upsert_guideline_sync, guideline_id, title, text, category)
 
 
 # ─── Mock Fallbacks ──────────────────────────────────────────────────────────
@@ -200,5 +213,12 @@ def _mock_guidelines(query: str) -> List[Dict]:
             "text": "Moderate pain, stable vitals, requires evaluation within 30 minutes.",
             "category": "triage",
         },
+        {
+            "title": "P3 Non-Urgent Criteria",
+            "text": "Minor symptoms, stable vitals, can wait for standard consultation queue.",
+            "category": "triage",
+        },
     ]
-    return [g for g in guidelines if any(w in query.lower() for w in g["text"].lower().split()[:5])] or guidelines[:2]
+    q = query.lower()
+    matched = [g for g in guidelines if any(w in q for w in ["chest", "pain", "stroke", "breath", "urgent"])]
+    return matched or guidelines[:2]

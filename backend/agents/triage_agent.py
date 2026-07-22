@@ -1,5 +1,6 @@
 """
-Triage Agent (Google ADK style)
+Triage Agent — powered by Lyzr AI (Tier 1) with Gemini/HF + rule-based fallback.
+
 Classifies patient urgency as P1 / P2 / P3 with confidence and reasoning.
 Uses Qdrant RAG to retrieve matching clinical guidelines.
 """
@@ -7,10 +8,11 @@ Uses Qdrant RAG to retrieve matching clinical guidelines.
 import asyncio
 from typing import Dict, Any, List
 from .llm import llm_call, extract_json
+from .lyzr_client import lyzr_chat
 
 SYSTEM_PROMPT = """You are an expert clinical triage agent following Manchester Triage System guidelines.
 
-Based on the transcript, extracted symptoms, red flags, and retrieved clinical guidelines,
+Based on the transcript, extracted symptoms, red flags, retrieved clinical guidelines, and patient history,
 classify the patient into:
 
 P1 - IMMEDIATE (Emergency): Life-threatening, requires immediate intervention
@@ -27,8 +29,19 @@ Return ONLY a JSON object:
     "Reason 3"
   ],
   "guideline_matches": ["matched guideline titles"],
-  "recommended_action": "brief action text"
+  "recommended_action": "brief action text (e.g. 'Dispatch Ambulance', 'Schedule within 24h')",
+  "differential_diagnosis": [
+    "Most likely diagnosis",
+    "Alternative diagnosis 1",
+    "Alternative diagnosis 2"
+  ]
 }}
+
+Patient Profile (Age, Gender, Allergies, Chronic Conditions):
+{patient_profile}
+
+Past Patient Memory / History:
+{patient_memory}
 
 Guidelines context:
 {guidelines}
@@ -52,6 +65,7 @@ def _rule_based_triage(red_flags: List[str], symptoms: List[Dict]) -> Dict[str, 
             ],
             "guideline_matches": ["P1 Emergency Criteria"],
             "recommended_action": "Immediate resuscitation and specialist alert",
+            "differential_diagnosis": ["Pending Evaluation - Emergency"],
         }
     elif red_flags:
         return {
@@ -64,6 +78,7 @@ def _rule_based_triage(red_flags: List[str], symptoms: List[Dict]) -> Dict[str, 
             ],
             "guideline_matches": ["P1 Emergency Criteria"],
             "recommended_action": "Immediate assessment and monitoring",
+            "differential_diagnosis": ["Pending Evaluation - Emergency"],
         }
 
     severe_count = sum(1 for s in symptoms if s.get("severity") == "severe")
@@ -78,6 +93,7 @@ def _rule_based_triage(red_flags: List[str], symptoms: List[Dict]) -> Dict[str, 
             ],
             "guideline_matches": ["P2 Urgent Criteria"],
             "recommended_action": "Evaluation within 30 minutes",
+            "differential_diagnosis": ["Pending Evaluation - Urgent"],
         }
 
     return {
@@ -90,11 +106,12 @@ def _rule_based_triage(red_flags: List[str], symptoms: List[Dict]) -> Dict[str, 
         ],
         "guideline_matches": ["P3 Non-Urgent Criteria"],
         "recommended_action": "Standard consultation queue",
+        "differential_diagnosis": ["Pending Evaluation"],
     }
 
 
 class TriageAgent:
-    """Google ADK-style agent for patient triage classification."""
+    """Classifies patient urgency P1/P2/P3 using clinical guidelines and RAG."""
 
     name = "TriageAgent"
     description = "Classifies patient urgency P1/P2/P3 using clinical guidelines and RAG"
@@ -105,6 +122,8 @@ class TriageAgent:
         symptoms: List[Dict],
         red_flags: List[str],
         guidelines: List[Dict],
+        patient_profile: Dict[str, Any] = None,
+        patient_memory: List[Dict] = None,
     ) -> Dict[str, Any]:
         fallback = _rule_based_triage(red_flags, symptoms)
 
@@ -120,21 +139,39 @@ class TriageAgent:
 
         red_flags_text = ", ".join(red_flags) if red_flags else "None"
 
+        patient_profile_str = str(patient_profile) if patient_profile else "No demographics available"
+        patient_memory_str = "\n".join(
+            f"- {m.get('text', '')}" for m in (patient_memory or [])
+        ) or "No relevant past history retrieved"
+
         prompt = SYSTEM_PROMPT.format(
+            patient_profile=patient_profile_str,
+            patient_memory=patient_memory_str,
             guidelines=guideline_text,
             symptoms=symptoms_text,
             red_flags=red_flags_text,
-            transcript=transcript[:1500],  # Truncate for token limit
+            transcript=transcript,
         )
 
+        # ── Tier 1: Lyzr Triage Agent ─────────────────────────────────────────
+        lyzr_raw = lyzr_chat(prompt, agent_key="triage")
+        if lyzr_raw:
+            result = extract_json(lyzr_raw)
+            if result and "priority" in result:
+                print("[TriageAgent] ✓ Used Lyzr triage agent.")
+                if result["priority"] not in ["P1", "P2", "P3"]:
+                    result["priority"] = fallback["priority"]
+                result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.8))))
+                return result
+
+        # ── Tier 2: Gemini / HuggingFace ─────────────────────────────────────
+        print("[TriageAgent] Lyzr unavailable — falling back to Gemini/HF.")
         raw = llm_call(prompt, fallback=fallback)
         result = extract_json(raw)
 
         if result and "priority" in result:
-            # Validate priority
             if result["priority"] not in ["P1", "P2", "P3"]:
                 result["priority"] = fallback["priority"]
-            # Clamp confidence
             result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.8))))
             return result
 

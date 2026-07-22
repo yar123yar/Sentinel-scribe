@@ -65,6 +65,7 @@ export interface DashboardStats {
   soap_notes_generated: number;
   total_patients: number;
   recent_consultations: Consultation[];
+  recent_patients: Patient[];
 }
 
 export interface TriageResponse {

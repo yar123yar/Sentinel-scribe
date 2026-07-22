@@ -1,10 +1,12 @@
 """
-SOAP Note Agent (Google ADK style)
+SOAP Note Agent — powered by Lyzr AI (Tier 1) with Gemini/HF fallback.
+
 Generates structured SOAP notes from consultation transcripts.
 """
 
 from typing import Dict, Any, List, Optional
 from .llm import llm_call, extract_json
+from .lyzr_client import lyzr_chat
 
 SYSTEM_PROMPT = """You are a medical documentation specialist generating SOAP notes.
 
@@ -17,6 +19,12 @@ Return ONLY a JSON object with exactly these fields:
   "assessment": "Clinical assessment and differential diagnoses. Include primary diagnosis and any secondary considerations.",
   "plan": "Treatment plan including medications, referrals, follow-up, patient education, and monitoring parameters."
 }}
+
+Patient Profile (Age, Gender, Allergies, Chronic Conditions):
+{patient_profile}
+
+Past Patient Memory / History:
+{patient_memory}
 
 Patient Priority: {priority}
 Symptoms: {symptoms}
@@ -31,13 +39,22 @@ def _fallback_soap(transcript: str, symptoms: List[Dict], priority: str) -> Dict
     return {
         "subjective": f"Patient presents with {sym_list}. Full history obtained from consultation transcript.",
         "objective": "Vital signs: To be assessed. Physical examination: To be performed. Additional investigations as indicated.",
-        "assessment": f"Patient triaged as {priority}. Clinical assessment pending full examination. Primary differential based on presenting symptoms of {sym_list}.",
-        "plan": "1. Complete physical examination\n2. Order relevant investigations\n3. Initiate appropriate treatment based on findings\n4. Patient education regarding diagnosis and follow-up\n5. Return precautions discussed",
+        "assessment": (
+            f"Patient triaged as {priority}. Clinical assessment pending full examination. "
+            f"Primary differential based on presenting symptoms of {sym_list}."
+        ),
+        "plan": (
+            "1. Complete physical examination\n"
+            "2. Order relevant investigations\n"
+            "3. Initiate appropriate treatment based on findings\n"
+            "4. Patient education regarding diagnosis and follow-up\n"
+            "5. Return precautions discussed"
+        ),
     }
 
 
 class SOAPAgent:
-    """Google ADK-style agent for generating structured SOAP notes."""
+    """Generates clinical SOAP notes from consultation transcripts."""
 
     name = "SOAPAgent"
     description = "Generates clinical SOAP notes from consultation transcripts"
@@ -48,6 +65,8 @@ class SOAPAgent:
         symptoms: List[Dict],
         red_flags: List[str],
         priority: str = "P3",
+        patient_profile: Dict[str, Any] = None,
+        patient_memory: List[Dict] = None,
     ) -> Dict[str, str]:
         fallback = _fallback_soap(transcript, symptoms, priority)
 
@@ -58,13 +77,30 @@ class SOAPAgent:
 
         red_flags_text = ", ".join(red_flags) if red_flags else "None identified"
 
+        patient_profile_str = str(patient_profile) if patient_profile else "No demographics available"
+        patient_memory_str = "\n".join(
+            f"- {m.get('text', '')}" for m in (patient_memory or [])
+        ) or "No relevant past history retrieved"
+
         prompt = SYSTEM_PROMPT.format(
+            patient_profile=patient_profile_str,
+            patient_memory=patient_memory_str,
             priority=priority,
             symptoms=symptoms_text,
             red_flags=red_flags_text,
-            transcript=transcript[:2000],
+            transcript=transcript,
         )
 
+        # ── Tier 1: Lyzr SOAP Agent ───────────────────────────────────────────
+        lyzr_raw = lyzr_chat(prompt, agent_key="soap")
+        if lyzr_raw:
+            result = extract_json(lyzr_raw)
+            if result and all(k in result for k in ["subjective", "objective", "assessment", "plan"]):
+                print("[SOAPAgent] ✓ Used Lyzr SOAP agent.")
+                return result
+
+        # ── Tier 2: Gemini / HuggingFace ─────────────────────────────────────
+        print("[SOAPAgent] Lyzr unavailable — falling back to Gemini/HF.")
         raw = llm_call(prompt, fallback=fallback)
         result = extract_json(raw)
 

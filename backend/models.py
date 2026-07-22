@@ -37,10 +37,11 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     name = Column(String, nullable=False)
     role = Column(String, default="doctor")
+    phone_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     consultations = relationship("Consultation", back_populates="user")
-
+    patients = relationship("Patient", back_populates="user")
 
 # ─── Patients ─────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ class Patient(Base):
     __tablename__ = "patients"
 
     id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"))
     name = Column(String, nullable=False)
     dob = Column(String)                     # ISO date string
     gender = Column(String)
@@ -57,7 +59,8 @@ class Patient(Base):
     chronic_conditions = Column(JSON, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    consultations = relationship("Consultation", back_populates="patient")
+    user = relationship("User", back_populates="patients")
+    consultations = relationship("Consultation", back_populates="patient", cascade="all, delete-orphan")
 
 
 # ─── Consultations ────────────────────────────────────────────────────────────
@@ -109,6 +112,9 @@ class TriageResult(Base):
     reasoning = Column(JSON, default=list)           # list of reason strings
     red_flags = Column(JSON, default=list)           # detected red flag symptoms
     guideline_matches = Column(JSON, default=list)   # matched clinical guidelines
+    recommended_action = Column(String)
+    differential_diagnosis = Column(JSON, default=list)
+    is_accurate = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     consultation = relationship("Consultation", back_populates="triage_result")

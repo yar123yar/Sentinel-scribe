@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { login, loginDemo } from '@/lib/auth';
+import Link from 'next/link';
 import {
   Activity, Brain, Shield, Clock, ArrowRight,
   CheckCircle, AlertTriangle, Zap, Lock, Eye, EyeOff
@@ -77,19 +78,19 @@ export default function LoginPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <p className="text-white/60 text-sm font-medium mb-3 uppercase tracking-widest">
+            <p className="text-white/80 text-sm font-medium mb-3 uppercase tracking-widest">
               Healthcare AI Platform
             </p>
             <h1 className="text-4xl xl:text-5xl font-bold text-white mb-4 leading-tight">
               Clinical Triage,<br />
-              <span className="text-blue-200">Reimagined.</span>
+              <span className="text-blue-100">Reimagined.</span>
             </h1>
-            <p className="text-white/70 text-base mb-10 max-w-md leading-relaxed">
+            <p className="text-white text-base mb-10 max-w-md leading-relaxed font-medium">
               AI-augmented triage classification, automated SOAP documentation, and intelligent patient memory — built for the modern clinician.
             </p>
 
             {/* Feature list */}
-            <div className="space-y-3 mb-10">
+            <div className="space-y-4 mb-10">
               {FEATURES.map((f, i) => (
                 <motion.div
                   key={f}
@@ -98,8 +99,8 @@ export default function LoginPage() {
                   transition={{ delay: 0.3 + i * 0.08 }}
                   className="flex items-center gap-3"
                 >
-                  <CheckCircle size={16} color="#86EFAC" className="flex-shrink-0" />
-                  <span className="text-white/80 text-sm">{f}</span>
+                  <CheckCircle size={18} color="#4ADE80" className="flex-shrink-0" />
+                  <span className="text-white font-medium text-sm">{f}</span>
                 </motion.div>
               ))}
             </div>
@@ -137,8 +138,8 @@ export default function LoginPage() {
               <Activity size={18} color="white" />
             </div>
             <div>
-              <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>ClinicalAI</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Command Center</p>
+              <p className="font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>ClinicalAI</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Command Center</p>
             </div>
           </div>
 
@@ -153,10 +154,10 @@ export default function LoginPage() {
             ))}
           </div>
 
-          <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
             Welcome back
           </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-sm mb-8" style={{ color: 'var(--color-text-secondary)' }}>
             Sign in to your clinical workspace
           </p>
 
@@ -174,7 +175,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-text-primary)' }}>
                 Email address
               </label>
               <input
@@ -191,7 +192,7 @@ export default function LoginPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Password</label>
+                <label className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Password</label>
               </div>
               <div className="relative">
                 <input
@@ -208,7 +209,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 btn-ghost btn-icon-sm"
-                  style={{ color: 'var(--text-muted)' }}
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -235,7 +236,7 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="divider-text my-6 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <div className="divider-text my-8 text-xs" style={{ color: 'var(--color-text-muted)' }}>
             or
           </div>
 
@@ -253,19 +254,19 @@ export default function LoginPage() {
           </button>
 
           {/* Demo credentials card */}
-          <div className="mt-5 p-4 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
+          <div className="mt-8 p-5 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid var(--color-border)' }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>
               DEMO CREDENTIALS
             </p>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Email</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Email</span>
                 <code className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: '#EFF6FF', color: 'var(--color-primary)' }}>
                   doctor@clinic.ai
                 </code>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Password</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Password</span>
                 <code className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: '#EFF6FF', color: 'var(--color-primary)' }}>
                   demo1234
                 </code>
@@ -273,18 +274,27 @@ export default function LoginPage() {
             </div>
           </div>
 
+          <div className="mt-6 text-center">
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Don't have an account?{' '}
+              <Link href="/signup" className="font-semibold hover:underline" style={{ color: 'var(--color-primary)' }}>
+                Sign up
+              </Link>
+            </p>
+          </div>
+
           {/* Trust badges — desktop */}
-          <div className="hidden lg:grid grid-cols-2 gap-2 mt-6">
+          <div className="hidden lg:grid grid-cols-2 gap-3 mt-8">
             {TRUST_BADGES.map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-start gap-2.5 p-3 rounded-xl"
-                style={{ background: '#F8FAFC', border: '1px solid var(--border)' }}>
+                style={{ background: '#F8FAFC', border: '1px solid var(--color-border)' }}>
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: '#EFF6FF' }}>
                   <Icon size={13} style={{ color: 'var(--color-action)' }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{label}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{desc}</p>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)' }}>{label}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{desc}</p>
                 </div>
               </div>
             ))}
@@ -300,8 +310,8 @@ function HealthcareIllustration() {
   return (
     <div className="relative">
       <motion.div
-        className="rounded-2xl overflow-hidden border border-white/20"
-        style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', padding: '16px' }}
+        className="rounded-2xl overflow-hidden border border-white/30 shadow-xl"
+        style={{ background: 'rgba(255,255,255,0.20)', backdropFilter: 'blur(16px)', padding: '20px' }}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.5, duration: 0.5 }}

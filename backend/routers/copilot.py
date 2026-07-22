@@ -46,8 +46,10 @@ async def copilot_chat(
                 } if consultation.triage_result else {},
                 "red_flags": consultation.triage_result.red_flags if consultation.triage_result else [],
                 "soap": {
-                    "subjective": consultation.soap_note.subjective if consultation.soap_note else "",
-                    "assessment": consultation.soap_note.assessment if consultation.soap_note else "",
+                    "subjective":  consultation.soap_note.subjective  if consultation.soap_note else "",
+                    "objective":   consultation.soap_note.objective   if consultation.soap_note else "",
+                    "assessment":  consultation.soap_note.assessment  if consultation.soap_note else "",
+                    "plan":        consultation.soap_note.plan        if consultation.soap_note else "",
                 } if consultation.soap_note else {},
             }
 
@@ -64,6 +66,8 @@ async def copilot_chat(
         patient_history=patient_memory,
         guidelines=guidelines,
         conversation_history=[m.model_dump() for m in (body.history or [])],
+        consultation_id=body.consultation_id,
+        context=body.context or "workspace",
     )
 
     return CopilotResponse(

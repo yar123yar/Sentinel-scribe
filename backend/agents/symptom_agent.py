@@ -1,11 +1,13 @@
 """
-Symptom Extraction Agent (Google ADK style)
+Symptom Extraction Agent — powered by Lyzr AI (Tier 1) with Gemini/HF fallback.
+
 Extracts structured symptom data from consultation transcripts.
 Returns a list of symptoms with name, severity, and duration.
 """
 
 from typing import List, Dict, Any
 from .llm import llm_call, extract_json
+from .lyzr_client import lyzr_chat
 
 SYSTEM_PROMPT = """You are a clinical symptom extraction agent.
 
@@ -43,7 +45,7 @@ COMMON_SYMPTOMS = [
 
 
 class SymptomAgent:
-    """Google ADK-style agent for extracting structured symptom data."""
+    """Extracts structured symptom data from consultation transcripts."""
 
     name = "SymptomAgent"
     description = "Extracts symptoms, severity, and duration from transcripts"
@@ -51,26 +53,50 @@ class SymptomAgent:
     def run(self, transcript: str) -> Dict[str, Any]:
         prompt = f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{transcript}\n\nJSON:"
 
-        # Build rule-based fallback
+        # Build rule-based fallback with negation awareness
         lower = transcript.lower()
         fallback_symptoms = []
+        negation_terms = [
+            " no ", " not ", "denied", "denies", "without", "none",
+            "negative for", "free of", "no symptoms", "absence of",
+            "no history of", "never", "reports no", "patient denied",
+            "no complaints", "no concerns",
+        ]
+
         for sym in COMMON_SYMPTOMS:
-            if sym in lower:
-                fallback_symptoms.append({
-                    "name": sym,
-                    "severity": "moderate",
-                    "duration": "unknown",
-                    "body_system": "general",
-                })
+            idx = lower.find(sym)
+            if idx != -1:
+                start_idx = max(0, idx - 120)
+                context_window = lower[start_idx:idx]
+                is_negated = any(neg in context_window for neg in negation_terms)
+                if not is_negated:
+                    fallback_symptoms.append({
+                        "name": sym,
+                        "severity": "moderate",
+                        "duration": "unknown",
+                        "body_system": "general",
+                    })
 
         fallback = {
-            "symptoms": fallback_symptoms[:5] if fallback_symptoms else [
-                {"name": "reported complaint", "severity": "moderate", "duration": "unknown", "body_system": "general"}
-            ],
-            "chief_complaint": "Patient reported symptoms",
-            "duration_of_illness": "unknown",
+            "symptoms": fallback_symptoms[:5],
+            "chief_complaint": (
+                "No symptoms reported — routine health assessment"
+                if not fallback_symptoms
+                else ((transcript[:57] + "...") if len(transcript) > 60 else transcript)
+            ),
+            "duration_of_illness": "N/A" if not fallback_symptoms else "unknown",
         }
 
+        # ── Tier 1: Lyzr Symptom Extraction Agent ────────────────────────────
+        lyzr_raw = lyzr_chat(prompt, agent_key="symptom")
+        if lyzr_raw:
+            result = extract_json(lyzr_raw)
+            if result and "symptoms" in result:
+                print("[SymptomAgent] ✓ Used Lyzr symptom agent.")
+                return result
+
+        # ── Tier 2: Gemini / HuggingFace ─────────────────────────────────────
+        print("[SymptomAgent] Lyzr unavailable — falling back to Gemini/HF.")
         raw = llm_call(prompt, fallback=fallback)
         result = extract_json(raw)
 

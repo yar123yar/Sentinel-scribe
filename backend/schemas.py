@@ -9,6 +9,12 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class SignupRequest(BaseModel):
+    name: str
+    role: str
+    email: str
+    phone_number: str
+    password: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -23,6 +29,7 @@ class UserOut(BaseModel):
     email: str
     name: str
     role: str
+    phone_number: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -78,6 +85,8 @@ class TriageResultOut(BaseModel):
     reasoning: List[str]
     red_flags: List[str]
     guideline_matches: List[str]
+    recommended_action: Optional[str] = None
+    differential_diagnosis: Optional[List[str]] = []
 
     class Config:
         from_attributes = True
@@ -133,7 +142,6 @@ class ConsultationOut(BaseModel):
 
 class TriageRequest(BaseModel):
     consultation_id: str
-    transcript: str
     patient_id: str
 
 
@@ -144,6 +152,8 @@ class TriageResponse(BaseModel):
     red_flags: List[str]
     symptoms: List[dict]
     guideline_matches: List[str]
+    recommended_action: Optional[str] = None
+    differential_diagnosis: Optional[List[str]] = []
     soap_note: Optional[dict] = None
 
 
@@ -166,8 +176,10 @@ class CopilotMessage(BaseModel):
 class CopilotRequest(BaseModel):
     patient_id: str
     consultation_id: Optional[str] = None
+    transcript: Optional[str] = None
     message: str
     history: Optional[List[CopilotMessage]] = []
+    context: Optional[str] = "workspace"  # 'workspace' | 'dashboard'
 
 
 class CopilotResponse(BaseModel):
@@ -182,4 +194,7 @@ class DashboardStats(BaseModel):
     emergency_cases: int
     soap_notes_generated: int
     total_patients: int
+    triage_accuracy: float = 94.0
+    pending_reviews: int = 0
     recent_consultations: List[ConsultationOut]
+    recent_patients: List[PatientOut] = []

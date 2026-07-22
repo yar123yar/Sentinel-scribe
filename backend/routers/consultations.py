@@ -14,20 +14,22 @@ router = APIRouter(prefix="/consultations", tags=["consultations"])
 
 @router.get("", response_model=List[ConsultationOut])
 async def list_consultations(
+    patient_id: str | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Consultation)
-        .options(
-            selectinload(Consultation.patient),
-            selectinload(Consultation.symptoms),
-            selectinload(Consultation.triage_result),
-            selectinload(Consultation.soap_note),
-        )
-        .order_by(Consultation.created_at.desc())
-        .limit(50)
-    )
+    query = select(Consultation).options(
+        selectinload(Consultation.patient),
+        selectinload(Consultation.symptoms),
+        selectinload(Consultation.triage_result),
+        selectinload(Consultation.soap_note),
+    ).order_by(Consultation.created_at.desc()).limit(50)
+    
+    query = query.where(Consultation.user_id == current_user.id)
+    if patient_id:
+        query = query.where(Consultation.patient_id == patient_id)
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -35,7 +37,7 @@ async def list_consultations(
 async def get_consultation(
     consultation_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Consultation)
@@ -45,7 +47,7 @@ async def get_consultation(
             selectinload(Consultation.triage_result),
             selectinload(Consultation.soap_note),
         )
-        .where(Consultation.id == consultation_id)
+        .where(Consultation.id == consultation_id, Consultation.user_id == current_user.id)
     )
     consultation = result.scalar_one_or_none()
     if not consultation:
@@ -88,3 +90,34 @@ async def create_consultation(
         .where(Consultation.id == consultation.id)
     )
     return result.scalar_one()
+
+@router.patch("/{consultation_id}/complete", response_model=ConsultationOut)
+async def complete_consultation(
+    consultation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Consultation)
+        .where(Consultation.id == consultation_id, Consultation.user_id == current_user.id)
+    )
+    consultation = result.scalar_one_or_none()
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    consultation.status = "completed"
+    await db.commit()
+    await db.refresh(consultation)
+
+    # Reload with relationships
+    res = await db.execute(
+        select(Consultation)
+        .options(
+            selectinload(Consultation.patient),
+            selectinload(Consultation.symptoms),
+            selectinload(Consultation.triage_result),
+            selectinload(Consultation.soap_note),
+        )
+        .where(Consultation.id == consultation.id)
+    )
+    return res.scalar_one()

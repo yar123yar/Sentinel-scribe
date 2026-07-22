@@ -33,16 +33,17 @@ class ClinicalPipeline:
         transcript: str,
         patient_id: str,
         consultation_id: Optional[str] = None,
+        patient_profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         steps = []
 
         # ── Step 1: Clean Transcript ─────────────────────────────────────────
-        print("🔄 [Pipeline] Step 1: TranscriptAgent")
+        print("[Pipeline] Step 1: TranscriptAgent")
         cleaned = self.transcript_agent.run(transcript)
         steps.append({"step": "transcript_cleaning", "status": "done"})
 
         # ── Step 2: Red Flag Detection ────────────────────────────────────────
-        print("🔄 [Pipeline] Step 2: RedFlagAgent")
+        print("[Pipeline] Step 2: RedFlagAgent")
         red_flag_result = self.red_flag_agent.run(cleaned)
         steps.append({
             "step": "red_flag_detection",
@@ -51,13 +52,13 @@ class ClinicalPipeline:
         })
 
         # ── Step 3: Symptom Extraction ────────────────────────────────────────
-        print("🔄 [Pipeline] Step 3: SymptomAgent")
+        print("[Pipeline] Step 3: SymptomAgent")
         symptom_result = self.symptom_agent.run(cleaned)
         symptoms = symptom_result.get("symptoms", [])
         steps.append({"step": "symptom_extraction", "status": "done", "count": len(symptoms)})
 
         # ── Step 4: Qdrant RAG (Guidelines + Patient Memory) ──────────────────
-        print("🔄 [Pipeline] Step 4: Qdrant RAG")
+        print("[Pipeline] Step 4: Qdrant RAG")
         symptom_query = " ".join(
             s.get("name", "") for s in symptoms[:5]
         ) + " " + " ".join(red_flag_result.get("red_flags", []))
@@ -69,28 +70,32 @@ class ClinicalPipeline:
         steps.append({"step": "qdrant_retrieval", "status": "done"})
 
         # ── Step 5: Triage Classification ─────────────────────────────────────
-        print("🔄 [Pipeline] Step 5: TriageAgent")
+        print("[Pipeline] Step 5: TriageAgent")
         triage_result = await self.triage_agent.run(
             transcript=cleaned,
             symptoms=symptoms,
             red_flags=red_flag_result.get("red_flags", []),
             guidelines=guidelines,
+            patient_profile=patient_profile,
+            patient_memory=patient_memory,
         )
         steps.append({"step": "triage_classification", "status": "done", "priority": triage_result.get("priority")})
 
         # ── Step 6: SOAP Note Generation ──────────────────────────────────────
-        print("🔄 [Pipeline] Step 6: SOAPAgent")
+        print("[Pipeline] Step 6: SOAPAgent")
         soap_result = self.soap_agent.run(
             transcript=cleaned,
             symptoms=symptoms,
             red_flags=red_flag_result.get("red_flags", []),
             priority=triage_result.get("priority", "P3"),
+            patient_profile=patient_profile,
+            patient_memory=patient_memory,
         )
         steps.append({"step": "soap_generation", "status": "done"})
 
         # ── Step 7: Save to Qdrant Patient Memory ─────────────────────────────
         if consultation_id:
-            print("🔄 [Pipeline] Step 7: Saving to Qdrant")
+            print("[Pipeline] Step 7: Saving to Qdrant")
             summary = (
                 f"Consultation: {symptom_result.get('chief_complaint', 'General visit')}. "
                 f"Priority: {triage_result.get('priority')}. "
@@ -109,7 +114,7 @@ class ClinicalPipeline:
             )
             steps.append({"step": "memory_save", "status": "done"})
 
-        print("✅ [Pipeline] Complete")
+        print("[Pipeline] Complete")
         return {
             "cleaned_transcript": cleaned,
             "red_flags": red_flag_result,

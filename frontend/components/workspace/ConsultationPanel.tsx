@@ -1,38 +1,102 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { TriageResponse } from '@/lib/types';
 import { getSeverityChipClass, getPriorityColor, getPriorityBg, getPriorityLabel } from '@/lib/utils';
 import {
   FileText, Upload, Zap, AlertTriangle, ChevronDown, ChevronUp,
-  Edit3, Save, RotateCcw, Info, Activity, Loader2, CheckCircle,
-  Siren, Phone, ArrowRight, ClipboardList, BookOpen, Stethoscope
+  Edit3, Save, RotateCcw, Activity, Loader2, CheckCircle,
+  Siren, Phone, ArrowRight, ClipboardList, BookOpen, Stethoscope, User,
+  ClipboardCheck, ThumbsUp, ThumbsDown
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   patientId: string | null;
   patientName: string | null;
-  onTriageComplete: (result: TriageResponse, consultationId: string) => void;
+  transcript: string;
+  onTranscriptChange: (value: string) => void;
+  onTriageComplete: (result: TriageResponse | null, consultationId: string | null) => void;
 }
 
-const SAMPLE_P1 = `Patient is a 54-year-old male presenting with severe chest pain radiating to the left arm for the past 45 minutes. He describes the pain as crushing, rated 9 out of 10. He has a history of coronary artery disease. He is also experiencing shortness of breath and diaphoresis. He took aspirin at home before coming in. On examination, he appears pale, anxious, and diaphoretic. BP 150/90, HR 105.`;
 
-const SAMPLE_P3 = `A 25-year-old female teacher presents with a 3-day history of sore throat, mild fever of 37.8°C, and fatigue. She reports difficulty swallowing. No rash. No recent travel. She works in a school and several colleagues have been unwell with similar symptoms recently.`;
 
 type Section = 'transcript' | 'symptoms' | 'triage' | 'soap';
 
-export default function ConsultationPanel({ patientId, patientName, onTriageComplete }: Props) {
-  const [transcript, setTranscript] = useState('');
+export default function ConsultationPanel({ patientId, patientName, transcript, onTranscriptChange, onTriageComplete }: Props) {
   const [loading, setLoading]       = useState(false);
   const [result, setResult]         = useState<TriageResponse | null>(null);
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['transcript']));
-  const [soapEditing, setSoapEditing] = useState(false);
-  const [soapDraft, setSoapDraft]     = useState<Record<string, string>>({});
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [feedbackGiven, setFeedbackGiven] = useState<'accurate' | 'inaccurate' | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
   const [pipelineSteps, setPipelineSteps] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Restore state from sessionStorage on mount
+  useEffect(() => {
+    const storedRes = sessionStorage.getItem('ws_triageResult');
+    if (storedRes && !result) {
+      try {
+        setResult(JSON.parse(storedRes));
+        setOpenSections(new Set(['transcript', 'symptoms', 'triage', 'soap']));
+      } catch (e) {}
+    }
+    const cId = sessionStorage.getItem('ws_consultationId');
+    if (cId && !consultationId) setConsultationId(cId);
+    
+    const isComp = sessionStorage.getItem('ws_isCompleted');
+    if (isComp === 'true') setIsCompleted(true);
+    
+    const fg = sessionStorage.getItem('ws_feedbackGiven');
+    if (fg) setFeedbackGiven(fg as 'accurate' | 'inaccurate');
+    
+    setIsHydrated(true);
+  }, []);
+
+  // Persist local UI state to sessionStorage
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem('ws_isCompleted', isCompleted.toString());
+  }, [isCompleted, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (feedbackGiven) sessionStorage.setItem('ws_feedbackGiven', feedbackGiven);
+    else sessionStorage.removeItem('ws_feedbackGiven');
+  }, [feedbackGiven, isHydrated]);
+
+  const [prevPatientId, setPrevPatientId] = useState(patientId);
+  useEffect(() => {
+    if (patientId !== prevPatientId) {
+      if (prevPatientId !== null) {
+        setResult(null);
+        setConsultationId(null);
+        setIsCompleted(false);
+        setFeedbackGiven(null);
+        setOpenSections(new Set(['transcript']));
+      }
+      setPrevPatientId(patientId);
+    }
+  }, [patientId, prevPatientId]);
+
+  const loadNewTranscript = (text: string) => {
+    onTranscriptChange(text);
+    setResult(null);
+    setConsultationId(null);
+    setIsCompleted(false);
+    setFeedbackGiven(null);
+    setPipelineSteps([]);
+    setOpenSections(new Set(['transcript']));
+    onTriageComplete(null, null);
+  };
 
   const toggleSection = (s: Section) => {
     setOpenSections(prev => {
@@ -50,7 +114,7 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
     setPipelineSteps([]);
     setResult(null);
     try {
-      const steps = ['Cleaning transcript…', 'Detecting red flags…', 'Extracting symptoms…', 'Querying Qdrant RAG…', 'Classifying triage…', 'Generating SOAP notes…', 'Saving to memory…'];
+      const steps = ['Cleaning transcript…', 'Detecting red flags…', 'Extracting symptoms…', 'Querying Qdrant RAG…', 'Classifying triage…', 'Saving to memory…'];
       let i = 0;
       const interval = setInterval(() => {
         if (i < steps.length) { setPipelineSteps(p => [...p, steps[i]]); i++; }
@@ -64,17 +128,17 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
       });
       const cId = conRes.data.id;
       setConsultationId(cId);
+      setIsCompleted(false);
+      setFeedbackGiven(null);
 
       const triageRes = await api.post('/triage', {
         consultation_id: cId,
-        transcript,
         patient_id: patientId,
       });
 
       clearInterval(interval);
       setPipelineSteps(steps);
       setResult(triageRes.data);
-      setSoapDraft(triageRes.data.soap_note || {});
       openAll();
       onTriageComplete(triageRes.data, cId);
     } catch (e) {
@@ -87,51 +151,85 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
 
   const handleReset = () => {
     setResult(null);
-    setTranscript('');
+    onTranscriptChange('');
     setConsultationId(null);
+    setIsCompleted(false);
+    setFeedbackGiven(null);
     setPipelineSteps([]);
-    setSoapEditing(false);
     setOpenSections(new Set(['transcript']));
+    onTriageComplete(null, null);
+    sessionStorage.removeItem('ws_consultationId');
+    sessionStorage.removeItem('ws_triageResult');
+    sessionStorage.removeItem('ws_isCompleted');
+    sessionStorage.removeItem('ws_feedbackGiven');
+  };
+
+  const handleFeedback = async (isAccurate: boolean) => {
+    if (!consultationId) return;
+    try {
+      await api.patch(`/triage/${consultationId}/accuracy`, { is_accurate: isAccurate });
+      setFeedbackGiven(isAccurate ? 'accurate' : 'inaccurate');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!consultationId) return;
+    try {
+      await api.patch(`/consultations/${consultationId}/complete`);
+      setIsCompleted(true);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to mark as complete.');
+    }
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setTranscript(ev.target?.result as string);
+    reader.onload = ev => loadNewTranscript(ev.target?.result as string);
     reader.readAsText(file);
   };
 
   const isEmergency = result?.priority === 'P1';
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
+    <div className="h-full flex flex-col min-h-0 bg-slate-50 dark:bg-slate-900">
 
       {/* ── Panel Header ──────────────────────────────────────── */}
-      <div
-        className="panel-header flex-shrink-0"
-        style={{ background: 'white', borderBottom: '1px solid var(--border)' }}
-      >
+      <div className="flex items-center justify-between px-4 h-14 sticky top-0 z-10 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: '#EFF6FF' }}>
-            <ClipboardList size={15} style={{ color: 'var(--color-action)' }} />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-900/30">
+            <ClipboardList size={15} className="text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <h4>Consultation Workflow</h4>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-none">Consultation Workflow</h4>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">
               {patientName ? `Patient: ${patientName}` : 'Select a patient to begin'}
             </p>
           </div>
         </div>
         {result && (
-          <button onClick={handleReset} className="btn btn-ghost btn-sm flex items-center gap-1.5">
-            <RotateCcw size={13} /> New
-          </button>
+          <div className="flex items-center gap-1.5">
+            {!isCompleted ? (
+              <Button size="sm" onClick={handleComplete} className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm px-3">
+                <CheckCircle size={13} className="mr-1.5" /> Mark Complete
+              </Button>
+            ) : (
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800 shadow-sm px-2 py-0.5">
+                <CheckCircle size={13} className="mr-1.5" /> Completed
+              </Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleReset} className="h-8 px-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+              <RotateCcw size={13} className="mr-1.5" /> New
+            </Button>
+          </div>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
 
         {/* ── Emergency Banner ───────────────────────────────── */}
         <AnimatePresence>
@@ -140,28 +238,31 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="emergency-banner flex-shrink-0"
+              transition={{ duration: 0.2 }}
+              className="sticky top-0 z-20 overflow-hidden"
             >
-              <Siren size={18} className="flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-bold text-sm">🚨 P1 EMERGENCY — Immediate Intervention Required</p>
-                <p className="text-white/80 text-xs mt-0.5">
-                  {result?.red_flags?.join(' · ') || 'Critical red flags detected'}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
-                  <Phone size={12} /> Alert Team
-                </button>
-                <button className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
-                  Escalate <ArrowRight size={12} />
-                </button>
+              <div className="bg-red-600 text-white p-4 shadow-md flex items-start gap-4">
+                <Siren size={20} className="flex-shrink-0 mt-0.5 animate-pulse" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm tracking-wide">🚨 EMERGENCY DETECTED — Possible Acute Coronary Syndrome</p>
+                  <p className="text-red-100 text-xs mt-1 font-medium">
+                    Priority: P1 · Detected: {result?.red_flags?.join(' · ') || 'Critical red flags'}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-col sm:flex-row">
+                  <Button size="sm" variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-transparent h-8 shadow-sm">
+                    <Phone size={13} className="mr-1.5" /> Call Team
+                  </Button>
+                  <Button size="sm" variant="secondary" className="bg-white text-red-700 hover:bg-red-50 border-transparent h-8 shadow-sm">
+                    Escalate <ArrowRight size={13} className="ml-1.5" />
+                  </Button>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="p-4 space-y-3">
+        <div className="p-4 md:p-6 pb-24 space-y-4 max-w-4xl mx-auto">
 
           {/* ── Section 1: Transcript ─────────────────────────── */}
           <CollapsibleSection
@@ -170,84 +271,82 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
             open={openSections.has('transcript')}
             onToggle={() => toggleSection('transcript')}
           >
-            <div className="p-4">
-              <textarea
-                id="transcript-input"
-                className="input textarea mb-3"
-                rows={7}
-                value={transcript}
-                onChange={e => setTranscript(e.target.value)}
-                placeholder="Paste or type the consultation transcript here…"
-              />
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="btn btn-secondary btn-sm"
-                >
-                  <Upload size={13} /> Upload file
-                </button>
-                <input ref={fileRef} type="file" accept=".txt,.doc,.docx" className="hidden" onChange={handleFile} />
-                <button
-                  onClick={() => setTranscript(SAMPLE_P1)}
-                  className="btn btn-sm"
-                  style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA' }}
-                >
-                  <AlertTriangle size={12} /> Sample P1 Case
-                </button>
-                <button
-                  onClick={() => setTranscript(SAMPLE_P3)}
-                  className="btn btn-sm"
-                  style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' }}
-                >
-                  <Stethoscope size={12} /> Sample P3 Case
-                </button>
-              </div>
-
-              {/* Pipeline progress */}
-              {loading && (
-                <div className="rounded-xl p-4 mb-4"
-                  style={{ background: '#F8FAFC', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-action)' }} />
-                    <span className="text-sm font-semibold" style={{ color: 'var(--color-primary)' }}>
-                      Running AI Pipeline…
-                    </span>
+            <div className="p-4 md:p-5">
+              {!patientId ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center">
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-slate-50 border border-slate-200 dark:bg-slate-900/50 dark:border-slate-800">
+                    <User size={28} className="text-slate-400" />
                   </div>
-                  <div className="space-y-1.5">
-                    {pipelineSteps.map((step, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-2 text-xs"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        <CheckCircle size={11} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-                        {step}
-                      </motion.div>
-                    ))}
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">No Patient Selected</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[250px]">
+                    Please select a patient from the left panel to begin the consultation workflow.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Textarea
+                    className="mb-4 min-h-[160px] resize-y bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 shadow-sm"
+                    value={transcript}
+                    onChange={e => {
+                      const val = e.target.value;
+                      onTranscriptChange(val);
+                      if (val.trim() === '') {
+                        setResult(null);
+                        onTriageComplete(null, null);
+                      }
+                    }}
+                    placeholder="Paste or type the consultation transcript here…"
+                  />
+                  <div className="flex flex-wrap items-center gap-2.5 mb-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileRef.current?.click()}
+                      className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 shadow-sm"
+                    >
+                      <Upload size={13} className="mr-1.5 text-slate-500" /> Upload file
+                    </Button>
+                    <input ref={fileRef} type="file" accept=".txt,.doc,.docx" className="hidden" onChange={handleFile} />
                   </div>
-                </div>
-              )}
 
-              <button
-                id="analyze-btn"
-                onClick={handleAnalyze}
-                disabled={!transcript.trim() || !patientId || loading}
-                className="btn btn-primary w-full"
-              >
-                {loading ? (
-                  <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                ) : (
-                  <><Zap size={15} /> Analyze & Triage Patient</>
-                )}
-              </button>
+                  {/* Pipeline progress */}
+                  {loading && (
+                    <div className="rounded-xl p-4 mb-6 bg-slate-50 border border-slate-200 dark:bg-slate-900/50 dark:border-slate-800 shadow-inner">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Loader2 size={14} className="animate-spin text-blue-600 dark:text-blue-400" />
+                        <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">
+                          Running AI Pipeline…
+                        </span>
+                      </div>
+                      <div className="space-y-2 pl-1">
+                        {pipelineSteps.map((step, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400"
+                          >
+                            <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
+                            {step}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-              {!patientId && (
-                <div className="mt-3 flex items-center gap-2 p-3 rounded-xl text-xs"
-                  style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-                  <Info size={13} /> Please select a patient from the left panel first.
-                </div>
+                  <Button
+                    size="lg"
+                    onClick={handleAnalyze}
+                    disabled={!transcript.trim() || !patientId || loading}
+                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all"
+                  >
+                    {loading ? (
+                      <><Loader2 size={15} className="animate-spin mr-2" /> Analyzing…</>
+                    ) : (
+                      <><Zap size={15} className="mr-2" /> Analyze & Triage Patient</>
+                    )}
+                  </Button>
+                </>
               )}
             </div>
           </CollapsibleSection>
@@ -259,21 +358,20 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
               icon={Activity}
               open={openSections.has('symptoms')}
               onToggle={() => toggleSection('symptoms')}
-              badge={result.red_flags.length > 0 ? { text: `${result.red_flags.length} Red Flag${result.red_flags.length > 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' } : undefined}
+              badge={result.red_flags.length > 0 ? { text: `${result.red_flags.length} Red Flag${result.red_flags.length > 1 ? 's' : ''}`, color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/40' } : undefined}
             >
-              <div className="p-4">
+              <div className="p-4 md:p-5">
                 {/* Red flags */}
                 {result.red_flags.length > 0 && (
-                  <div className="flex items-start gap-3 p-3.5 rounded-xl mb-4"
-                    style={{ background: '#FFF5F5', border: '1px solid #FECACA' }}>
-                    <AlertTriangle size={15} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
+                  <div className="flex items-start gap-3 p-4 rounded-xl mb-5 bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800/60 shadow-sm">
+                    <AlertTriangle size={16} className="text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold mb-1.5" style={{ color: '#B91C1C' }}>
+                      <p className="text-sm font-semibold mb-2 text-red-800 dark:text-red-400">
                         Red Flag Symptoms Detected
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-2">
                         {result.red_flags.map(f => (
-                          <span key={f} className="chip chip-severe">{f}</span>
+                          <Badge key={f} variant="destructive" className="shadow-sm">{f}</Badge>
                         ))}
                       </div>
                     </div>
@@ -281,20 +379,20 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
                 )}
 
                 {/* Symptom chips */}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {result.symptoms.map((s, i) => (
                     <motion.div
                       key={i}
-                      initial={{ opacity: 0, scale: 0.8 }}
+                      initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.04 }}
                     >
-                      <div className={getSeverityChipClass(s.severity)}>
-                        <span className="font-medium capitalize">{s.name}</span>
+                      <Badge variant="outline" className={`px-2.5 py-1 font-medium ${getSeverityChipClass(s.severity)}`}>
+                        <span className="capitalize">{s.name}</span>
                         {s.duration && s.duration !== 'unknown' && (
-                          <span className="opacity-60">· {s.duration}</span>
+                          <span className="opacity-60 font-normal ml-1.5">· {s.duration}</span>
                         )}
-                      </div>
+                      </Badge>
                     </motion.div>
                   ))}
                 </div>
@@ -310,58 +408,85 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
               open={openSections.has('triage')}
               onToggle={() => toggleSection('triage')}
             >
-              <div className="p-4">
+              <div className="p-4 md:p-5">
                 {/* Priority card */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-xl p-5 mb-4"
+                  className="rounded-2xl p-6 mb-6 shadow-sm overflow-hidden relative"
                   style={{
                     background: getPriorityBg(result.priority),
                     border: `1.5px solid ${getPriorityColor(result.priority)}30`,
                   }}
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-4 relative z-10">
                     <div>
-                      <span className="label-xs" style={{ color: getPriorityColor(result.priority) }}>
+                      <span className="text-[11px] font-bold uppercase tracking-widest opacity-80" style={{ color: getPriorityColor(result.priority) }}>
                         Triage Priority
                       </span>
-                      <h2 className="text-2xl font-bold mt-0.5" style={{ color: getPriorityColor(result.priority) }}>
+                      <h2 className="text-3xl font-black mt-1 tracking-tight" style={{ color: getPriorityColor(result.priority) }}>
                         {getPriorityLabel(result.priority)}
                       </h2>
                     </div>
                     <div className="text-right">
-                      <p className="label-xs mb-0.5">Confidence</p>
-                      <p className="text-3xl font-bold" style={{ color: getPriorityColor(result.priority) }}>
+                      <p className="text-[11px] font-bold uppercase tracking-widest opacity-80 mb-1" style={{ color: getPriorityColor(result.priority) }}>Confidence</p>
+                      <p className="text-4xl font-black tracking-tighter" style={{ color: getPriorityColor(result.priority) }}>
                         {Math.round(result.confidence * 100)}%
                       </p>
                     </div>
                   </div>
-                  <div className="confidence-track">
+                  
+                  {/* Progress bar background */}
+                  <div className="h-2 w-full rounded-full overflow-hidden bg-black/5 dark:bg-white/10 relative z-10 mb-4">
                     <motion.div
-                      className="confidence-fill"
+                      className="h-full rounded-full"
                       style={{ background: getPriorityColor(result.priority) }}
                       initial={{ width: 0 }}
                       animate={{ width: `${result.confidence * 100}%` }}
                       transition={{ delay: 0.3, duration: 0.8, ease: 'easeOut' }}
                     />
                   </div>
+
+                  <div className="flex items-center justify-between relative z-10 pt-2 border-t border-black/5 dark:border-white/10 mt-2">
+                    <span className="text-[11px] font-bold uppercase tracking-widest opacity-80" style={{ color: getPriorityColor(result.priority) }}>
+                      Is this triage accurate?
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => handleFeedback(true)}
+                        className={`h-7 px-2 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${feedbackGiven === 'accurate' ? 'bg-black/10 dark:bg-white/10 ring-1 ring-black/20 dark:ring-white/20' : ''}`}
+                        style={{ color: getPriorityColor(result.priority) }}
+                      >
+                        <ThumbsUp size={13} className="mr-1.5" /> Yes
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => handleFeedback(false)}
+                        className={`h-7 px-2 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${feedbackGiven === 'inaccurate' ? 'bg-black/10 dark:bg-white/10 ring-1 ring-black/20 dark:ring-white/20' : ''}`}
+                        style={{ color: getPriorityColor(result.priority) }}
+                      >
+                        <ThumbsDown size={13} className="mr-1.5" /> No
+                      </Button>
+                    </div>
+                  </div>
                 </motion.div>
 
                 {/* Reasoning */}
-                <p className="label-xs mb-2.5">Clinical Reasoning</p>
-                <div className="space-y-2 mb-4">
+                <h4 className="text-sm font-semibold mb-3 text-slate-900 dark:text-slate-100">Clinical Reasoning</h4>
+                <div className="space-y-2 mb-6">
                   {result.reasoning.map((r, i) => (
                     <motion.div
                       key={i}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.08 }}
-                      className="flex items-start gap-2.5 p-3 rounded-xl"
-                      style={{ background: '#F8FAFC', border: '1px solid var(--border)' }}
+                      className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 dark:bg-slate-900/50 dark:border-slate-800 shadow-sm"
                     >
-                      <CheckCircle size={13} style={{ color: 'var(--color-success)', flexShrink: 0, marginTop: 1 }} />
-                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{r}</p>
+                      <CheckCircle size={15} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{r}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -369,13 +494,12 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
                 {/* Guideline references */}
                 {result.guideline_matches.length > 0 && (
                   <>
-                    <p className="label-xs mb-2.5">Guideline References</p>
-                    <div className="space-y-1.5">
+                    <h4 className="text-sm font-semibold mb-3 text-slate-900 dark:text-slate-100">Guideline References</h4>
+                    <div className="space-y-2">
                       {result.guideline_matches.map((g, i) => (
-                        <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg"
-                          style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                          <BookOpen size={12} style={{ color: 'var(--color-action)', flexShrink: 0 }} />
-                          <p className="text-xs font-medium" style={{ color: 'var(--color-primary)' }}>{g}</p>
+                        <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/50 border border-blue-100 dark:bg-blue-900/10 dark:border-blue-900/40 shadow-sm">
+                          <BookOpen size={14} className="text-blue-600 dark:text-blue-500 flex-shrink-0" />
+                          <p className="text-sm font-medium text-blue-800 dark:text-blue-400">{g}</p>
                         </div>
                       ))}
                     </div>
@@ -385,35 +509,51 @@ export default function ConsultationPanel({ patientId, patientName, onTriageComp
             </CollapsibleSection>
           )}
 
-          {/* ── Section 4: SOAP Notes ─────────────────────────── */}
+          {/* ── Section 4: SOAP Note ──────────────────────────── */}
           {result?.soap_note && (
             <CollapsibleSection
-              title="SOAP Notes"
-              icon={FileText}
+              title="SOAP Note"
+              icon={ClipboardCheck}
               open={openSections.has('soap')}
               onToggle={() => toggleSection('soap')}
-              action={
-                <button
-                  onClick={() => setSoapEditing(!soapEditing)}
-                  className="btn btn-ghost btn-sm flex items-center gap-1.5"
-                >
-                  {soapEditing ? <><Save size={13} /> Done</> : <><Edit3 size={13} /> Edit</>}
-                </button>
-              }
             >
-              <div className="p-4 space-y-3">
-                {(['subjective', 'objective', 'assessment', 'plan'] as const).map(field => (
-                  <SOAPSection
-                    key={field}
-                    field={field}
-                    value={soapDraft[field] ?? result.soap_note?.[field] ?? ''}
-                    editing={soapEditing}
-                    onChange={v => setSoapDraft(prev => ({ ...prev, [field]: v }))}
-                  />
-                ))}
+              <div className="p-4 md:p-5 space-y-4">
+                {([
+                  { key: 'subjective',  label: 'S — Subjective',  color: 'blue',   desc: 'Patient\'s reported complaints & history' },
+                  { key: 'objective',   label: 'O — Objective',   color: 'violet', desc: 'Findings, vitals & investigations' },
+                  { key: 'assessment', label: 'A — Assessment',  color: 'amber',  desc: 'Clinical diagnosis & differentials' },
+                  { key: 'plan',        label: 'P — Plan',        color: 'emerald',desc: 'Treatment, referrals & follow-up' },
+                ] as const).map(({ key, label, color, desc }, i) => {
+                  const value = result.soap_note?.[key as keyof typeof result.soap_note];
+                  if (!value) return null;
+                  const colorMap: Record<string, { bg: string; border: string; labelColor: string; dot: string }> = {
+                    blue:    { bg: 'bg-blue-50 dark:bg-blue-900/15',     border: 'border-blue-200 dark:border-blue-800/60',   labelColor: 'text-blue-700 dark:text-blue-400',    dot: 'bg-blue-500' },
+                    violet:  { bg: 'bg-violet-50 dark:bg-violet-900/15', border: 'border-violet-200 dark:border-violet-800/60',labelColor: 'text-violet-700 dark:text-violet-400', dot: 'bg-violet-500' },
+                    amber:   { bg: 'bg-amber-50 dark:bg-amber-900/15',   border: 'border-amber-200 dark:border-amber-800/60', labelColor: 'text-amber-700 dark:text-amber-400',  dot: 'bg-amber-500' },
+                    emerald: { bg: 'bg-emerald-50 dark:bg-emerald-900/15',border: 'border-emerald-200 dark:border-emerald-800/60',labelColor: 'text-emerald-700 dark:text-emerald-400',dot: 'bg-emerald-500' },
+                  };
+                  const c = colorMap[color];
+                  return (
+                    <motion.div
+                      key={key}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.07 }}
+                      className={`rounded-xl border p-4 shadow-sm ${c.bg} ${c.border}`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.dot}`} />
+                        <span className={`text-xs font-bold uppercase tracking-widest ${c.labelColor}`}>{label}</span>
+                        <span className={`text-[11px] font-medium opacity-60 ${c.labelColor}`}>— {desc}</span>
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{value}</p>
+                    </motion.div>
+                  );
+                })}
               </div>
             </CollapsibleSection>
           )}
+
         </div>
       </div>
     </div>
@@ -433,27 +573,27 @@ function CollapsibleSection({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="card overflow-hidden">
+    <Card className="overflow-hidden shadow-sm border-slate-200 dark:border-slate-800 transition-all duration-200">
       <button
         onClick={onToggle}
-        className="section-header w-full"
-        style={{ background: open ? 'white' : '#FAFBFC' }}
+        className={`w-full px-4 md:px-5 py-3.5 flex items-center justify-between transition-colors ${open ? 'bg-white border-b border-slate-100 dark:bg-slate-950 dark:border-slate-800/50' : 'bg-slate-50 hover:bg-slate-100/50 dark:bg-slate-900 dark:hover:bg-slate-800/50'}`}
       >
-        <div className="flex items-center gap-2.5">
-          <Icon size={14} style={{ color: 'var(--color-action)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</span>
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-lg bg-blue-100/50 dark:bg-blue-900/30">
+            <Icon size={15} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <span className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">{title}</span>
           {badge && (
-            <span
-              className="text-xs font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: badge.bg, color: badge.color }}
-            >
+            <Badge variant="outline" className={`ml-2 text-xs font-semibold px-2 py-0.5 border-transparent ${badge.bg} ${badge.color}`}>
               {badge.text}
-            </span>
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {action && <div onClick={e => e.stopPropagation()}>{action}</div>}
-          {open ? <ChevronUp size={15} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={15} style={{ color: 'var(--text-muted)' }} />}
+          {action && <div>{action}</div>}
+          <div className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+            {open ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+          </div>
         </div>
       </button>
 
@@ -464,54 +604,14 @@ function CollapsibleSection({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-            style={{ overflow: 'hidden' }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden bg-white dark:bg-slate-950"
           >
             {children}
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </Card>
   );
 }
 
-/* ── SOAP Section ──────────────────────────────────────────────────────────── */
-const SOAP_META: Record<string, { label: string; short: string; color: string; bg: string }> = {
-  subjective:  { label: 'Subjective', short: 'S', color: '#2A7DE1', bg: '#EFF6FF' },
-  objective:   { label: 'Objective',  short: 'O', color: '#8B5CF6', bg: '#F5F3FF' },
-  assessment:  { label: 'Assessment', short: 'A', color: '#F59E0B', bg: '#FFFBEB' },
-  plan:        { label: 'Plan',       short: 'P', color: '#0E9F6E', bg: '#F0FDF9' },
-};
-
-function SOAPSection({ field, value, editing, onChange }: {
-  field: string; value: string; editing: boolean; onChange: (v: string) => void;
-}) {
-  const meta = SOAP_META[field];
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-      <div className="flex items-center gap-2.5 px-4 py-2.5" style={{ background: meta.bg }}>
-        <div
-          className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{ background: meta.color }}
-        >
-          {meta.short}
-        </div>
-        <span className="text-sm font-semibold" style={{ color: meta.color }}>{meta.label}</span>
-      </div>
-      {editing ? (
-        <textarea
-          className="w-full p-3.5 text-sm resize-none outline-none"
-          style={{ minHeight: '100px', color: 'var(--text-secondary)', fontFamily: 'inherit', border: 'none', background: 'white' }}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-        />
-      ) : (
-        <div className="px-4 py-3.5">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
-            {value || <span style={{ color: 'var(--text-muted)' }}>Not yet generated</span>}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}

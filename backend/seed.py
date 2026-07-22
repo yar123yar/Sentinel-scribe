@@ -551,7 +551,7 @@ async def seed_db():
 
         # Patients
         for p in PATIENTS:
-            patient = Patient(**p)
+            patient = Patient(user_id="user-001", **p)
             db.add(patient)
         await db.commit()
         print(f"✅ Seeded {len(PATIENTS)} patients")

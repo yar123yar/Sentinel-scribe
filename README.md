@@ -78,7 +78,7 @@ Transcript → TranscriptAgent (clean)
 
 ## 📊 Stack
 
-- **Frontend**: Next.js 14 + TypeScript + Tailwind + Radix UI
+- **Frontend**: Node.js 14 + TypeScript + Tailwind + Radix UI
 - **Backend**: FastAPI + SQLAlchemy (async) + Pydantic
 - **Database**: PostgreSQL
 - **Vector DB**: Qdrant (patient memory + clinical guidelines RAG)

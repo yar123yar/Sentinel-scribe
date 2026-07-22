@@ -1,12 +1,14 @@
 """
-Red Flag Agent (Google ADK style)
-Scans the transcript for life-threatening emergency symptoms.
+Red Flag Agent — powered by Lyzr AI (Tier 1) with Gemini/HF + rule-based fallback.
+
+Scans consultation transcripts for life-threatening emergency symptoms.
 Returns a list of detected red flags and an emergency boolean.
 """
 
 import re
 from typing import TypedDict, List
 from .llm import llm_call, extract_json
+from .lyzr_client import lyzr_chat
 
 # Rule-based fallback keywords for offline operation
 RED_FLAG_PATTERNS = {
@@ -54,7 +56,7 @@ class RedFlagResult(TypedDict):
 
 
 class RedFlagAgent:
-    """Google ADK-style agent for detecting life-threatening symptoms."""
+    """Detects emergency red-flag symptoms in consultation transcripts."""
 
     name = "RedFlagAgent"
     description = "Detects emergency red-flag symptoms in consultation transcripts"
@@ -63,25 +65,58 @@ class RedFlagAgent:
         # Always run rule-based check first (fast + offline)
         detected_rule_based = []
         lower = transcript.lower()
-        for flag_name, pattern in RED_FLAG_PATTERNS.items():
-            if re.search(pattern, lower, re.IGNORECASE):
-                detected_rule_based.append(flag_name)
+        negation_terms = [
+            " no ", " not ", "denied", "denies", "without", "none",
+            "negative for", "free of", "no symptoms", "absence of",
+            "no history of", "never", "reports no", "patient denied",
+            "no complaints", "no concerns",
+        ]
 
-        # Try LLM for richer detection
-        prompt = f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{transcript}\n\nJSON:"
-        fallback = {
+        for flag_name, pattern in RED_FLAG_PATTERNS.items():
+            for match in re.finditer(pattern, lower, re.IGNORECASE):
+                start_idx = max(0, match.start() - 120)
+                context_window = lower[start_idx:match.start()]
+                is_negated = any(neg in context_window for neg in negation_terms)
+                if not is_negated:
+                    detected_rule_based.append(flag_name)
+                    break
+
+        # Build fallback from rule-based results
+        fallback: RedFlagResult = {
             "has_emergency": len(detected_rule_based) > 0,
             "red_flags": detected_rule_based,
-            "emergency_level": "critical" if len(detected_rule_based) >= 2 else ("urgent" if detected_rule_based else "none"),
-            "alert_message": f"⚠️ Red flags detected: {', '.join(detected_rule_based)}" if detected_rule_based else "",
+            "emergency_level": (
+                "critical" if len(detected_rule_based) >= 2
+                else ("urgent" if detected_rule_based else "none")
+            ),
+            "alert_message": (
+                f"⚠️ Red flags detected: {', '.join(detected_rule_based)}"
+                if detected_rule_based else ""
+            ),
         }
 
+        prompt = f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{transcript}\n\nJSON:"
+
+        # ── Tier 1: Lyzr Red Flag Agent ──────────────────────────────────────
+        lyzr_raw = lyzr_chat(prompt, agent_key="red_flag")
+        if lyzr_raw:
+            result = extract_json(lyzr_raw)
+            if result and isinstance(result, dict):
+                print("[RedFlagAgent] ✓ Used Lyzr red_flag agent.")
+                llm_flags = result.get("red_flags", [])
+                combined_flags = list(set(llm_flags + detected_rule_based))
+                result["red_flags"] = combined_flags
+                result["has_emergency"] = bool(combined_flags) or result.get("has_emergency", False)
+                return result
+
+        # ── Tier 2: Gemini / HuggingFace ─────────────────────────────────────
+        print("[RedFlagAgent] Lyzr unavailable — falling back to Gemini/HF.")
         raw = llm_call(prompt, fallback=fallback)
         result = extract_json(raw)
 
-        if result and isinstance(result, dict):
-            # Merge rule-based with LLM results
-            combined_flags = list(set(result.get("red_flags", []) + detected_rule_based))
+        if result and isinstance(result, dict) and result != fallback:
+            llm_flags = result.get("red_flags", [])
+            combined_flags = list(set(llm_flags + detected_rule_based))
             result["red_flags"] = combined_flags
             result["has_emergency"] = bool(combined_flags) or result.get("has_emergency", False)
             return result
